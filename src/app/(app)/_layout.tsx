@@ -52,6 +52,15 @@ export default function AppLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="appointments/add"
+        options={{
+          title: "Tambah Jadwal Cek-up",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="calendar-outline" size={size} color={color} />
+          ),
+        }}
+      />
       {/* Sembunyikan route nested dari tab bar */}
       <Tabs.Screen name="patients/add" options={{ href: null }} />
       <Tabs.Screen name="patients/[id]/index" options={{ href: null }} />
