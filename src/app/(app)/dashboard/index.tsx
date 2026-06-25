@@ -1,13 +1,14 @@
 import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
 import { useState } from "react";
 import {
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    SafeAreaView,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
 // ─── Tipe data lokal ─────────────────────────────────────────────────────────
@@ -156,7 +157,10 @@ function DashboardHeader() {
           />
           <View style={styles.notifBadge} />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.avatarButton}>
+        <TouchableOpacity
+          style={styles.avatarButton}
+          onPress={() => router.push("/(app)/settings")}
+        >
           <Text style={styles.avatarText}>T</Text>
         </TouchableOpacity>
       </View>

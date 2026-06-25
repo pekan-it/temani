@@ -52,15 +52,6 @@ export default function AppLayout() {
           ),
         }}
       />
-      <Tabs.Screen
-        name="settings/index"
-        options={{
-          title: "Pengaturan",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="settings-outline" size={size} color={color} />
-          ),
-        }}
-      />
       {/* Sembunyikan route nested dari tab bar */}
       <Tabs.Screen name="patients/add" options={{ href: null }} />
       <Tabs.Screen name="patients/[id]/index" options={{ href: null }} />
