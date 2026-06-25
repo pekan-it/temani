@@ -61,6 +61,8 @@ export default function AppLayout() {
           ),
         }}
       />
+      <Tabs.Screen name="settings/index" options={{ href: null }} />
+      <Tabs.Screen name="settings/change-password" options={{ href: null }} />
       {/* Sembunyikan route nested dari tab bar */}
       <Tabs.Screen name="patients/add" options={{ href: null }} />
       <Tabs.Screen name="patients/[id]/index" options={{ href: null }} />
