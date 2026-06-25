@@ -47,6 +47,7 @@ export default function AppLayout() {
         name="care-score/index"
         options={{
           title: "Care Score",
+          href: null,
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="stats-chart-outline" size={size} color={color} />
           ),
@@ -56,6 +57,7 @@ export default function AppLayout() {
         name="settings/index"
         options={{
           title: "Pengaturan",
+          href: null,
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="settings-outline" size={size} color={color} />
           ),
