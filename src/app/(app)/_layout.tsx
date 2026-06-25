@@ -72,6 +72,25 @@ export default function AppLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="appointments/add"
+        options={{
+          title: "Jadwal",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="calendar-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="settings/change-password"
+        options={{
+          title: "Password",
+          href: null,
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="medkit-outline" size={size} color={color} />
+          ),
+        }}
+      />
 
       {/* Sembunyikan route nested dari tab bar */}
       <Tabs.Screen name="patients/add" options={{ href: null }} />

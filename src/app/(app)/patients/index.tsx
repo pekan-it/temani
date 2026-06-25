@@ -1,3 +1,18 @@
+// Tambahkan onPress ke card di renderItem — ganti View menjadi TouchableOpacity:
+
+// Di dalam renderItem, ganti:
+//   <View style={styles.card}>
+// dengan:
+//   <TouchableOpacity
+//     style={styles.card}
+//     onPress={() => router.push(`/(app)/patients/${item.id}`)}
+//     activeOpacity={0.75}
+//   >
+// Dan tutup dengan </TouchableOpacity> alih-alih </View>
+
+// ────────────────────────────────────────────────────────────────
+// FULL FILE (sudah diupdate):
+
 import { supabase } from "@/lib/supabase/client";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
@@ -34,7 +49,6 @@ export default function PatientListScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Refresh list setiap kali screen difokus (misal: balik dari add screen)
   useFocusEffect(
     useCallback(() => {
       fetchPatients();
@@ -159,7 +173,12 @@ export default function PatientListScreen() {
               const gender = item.notes ?? "Tidak diketahui";
 
               return (
-                <View style={styles.card}>
+                // ← PERUBAHAN: View → TouchableOpacity dengan onPress
+                <TouchableOpacity
+                  style={styles.card}
+                  onPress={() => router.push(`/(app)/patients/${item.id}`)}
+                  activeOpacity={0.75}
+                >
                   {/* Avatar + Info */}
                   <View style={styles.cardTop}>
                     <View
@@ -199,8 +218,14 @@ export default function PatientListScreen() {
                         </Text>
                       </View>
                     </View>
+                    {/* Chevron indicator */}
+                    <Ionicons
+                      name="chevron-forward"
+                      size={16}
+                      color={TEXT_MUTED}
+                    />
                   </View>
-                </View>
+                </TouchableOpacity>
               );
             }}
           />
