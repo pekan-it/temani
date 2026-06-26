@@ -2,11 +2,11 @@ import { supabase } from "@/lib/supabase/client";
 import { Profile } from "@/types/database";
 import { Session } from "@supabase/supabase-js";
 import {
-    createContext,
-    ReactNode,
-    useContext,
-    useEffect,
-    useState,
+  createContext,
+  ReactNode,
+  useContext,
+  useEffect,
+  useState,
 } from "react";
 
 interface AuthContextType {

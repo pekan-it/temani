@@ -137,7 +137,8 @@ export default function SettingsScreen() {
         onPress: async () => {
           try {
             await logout();
-            router.replace("/(auth)/login");
+            // Tidak perlu router.replace di sini —
+            // onAuthStateChange di auth-context akan redirect otomatis
           } catch (error) {
             Alert.alert(
               "Gagal keluar",

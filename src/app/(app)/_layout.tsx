@@ -76,6 +76,16 @@ export default function AppLayout() {
         name="appointments/add"
         options={{
           title: "Jadwal",
+          href: null,
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="calendar-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="appointments/index"
+        options={{
+          title: "Jadwal",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="calendar-outline" size={size} color={color} />
           ),

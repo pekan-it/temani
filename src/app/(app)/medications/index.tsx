@@ -92,7 +92,7 @@ function MedicationCard({
       {/* Header */}
       <View style={styles.cardHeader}>
         <View style={styles.iconWrap}>
-          <Ionicons name="medical" size={20} color="#2D6A4F" />
+          <Ionicons name="medical-outline" size={20} color="#2D6A4F" />
         </View>
         <View style={styles.cardHeaderText}>
           <Text style={styles.medName} numberOfLines={1}>

@@ -12,6 +12,7 @@ import {
   View,
 } from "react-native";
 
+// ─── Warna ────────────────────────────────────────────────────────────────────
 const PRIMARY = "#2D6A4F";
 const PRIMARY_LIGHT = "#E8F5F0";
 const BG = "#F8FAF9";
@@ -24,13 +25,14 @@ const PINK = "#EC4899";
 const ORANGE = "#F59E0B";
 const PURPLE = "#8B5CF6";
 
+// ─── Tipe data (disesuaikan dengan skema DB) ──────────────────────────────────
 type Patient = {
   id: string;
   family_id: string;
   name: string;
   age: number;
   diagnosis: string;
-  notes: string | null;
+  notes: string | null; // dipakai sebagai gender
   created_at: string;
 };
 
@@ -38,24 +40,48 @@ type Medication = {
   id: string;
   patient_id: string;
   name: string;
-  dosage: string;
-  frequency: string;
-  time_of_day: string | null;
-  notes: string | null;
+  dose: string;
+  schedules: string[];
+  stock: number;
+  expiry_date: string | null;
   is_active: boolean;
 };
 
 type Appointment = {
   id: string;
   patient_id: string;
+  family_id: string;
+  hospital_name: string;
   doctor_name: string;
-  specialization: string | null;
-  location: string | null;
-  scheduled_at: string;
-  notes: string | null;
+  appointment_type: "kontrol_rutin" | "ambil_resep" | "cek_lab" | "lainnya";
+  scheduled_date: string;
+  scheduled_time: string;
   status: "scheduled" | "completed" | "cancelled";
+  notes: string | null;
 };
 
+// ─── Helper ───────────────────────────────────────────────────────────────────
+function formatAppointmentType(type: Appointment["appointment_type"]): string {
+  const map: Record<Appointment["appointment_type"], string> = {
+    kontrol_rutin: "Kontrol Rutin",
+    ambil_resep: "Ambil Resep",
+    cek_lab: "Cek Lab",
+    lainnya: "Lainnya",
+  };
+  return map[type] ?? type;
+}
+
+function formatScheduleLabel(s: string): string {
+  const map: Record<string, string> = {
+    pagi: "Pagi (07:00)",
+    siang: "Siang (12:00)",
+    malam: "Malam (19:00)",
+    sebelum_tidur: "Sebelum Tidur (21:00)",
+  };
+  return map[s] ?? s;
+}
+
+// ─── Layar Utama ──────────────────────────────────────────────────────────────
 export default function PatientDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
 
@@ -78,20 +104,26 @@ export default function PatientDetailScreen() {
         supabase.from("patients").select("*").eq("id", id).single(),
         supabase
           .from("medications")
-          .select("*")
+          .select(
+            "id, patient_id, name, dose, schedules, stock, expiry_date, is_active",
+          )
           .eq("patient_id", id)
           .order("created_at", { ascending: false }),
         supabase
           .from("appointments")
-          .select("*")
+          .select(
+            "id, patient_id, family_id, hospital_name, doctor_name, appointment_type, scheduled_date, scheduled_time, status, notes",
+          )
           .eq("patient_id", id)
-          .order("scheduled_at", { ascending: true }),
+          .order("scheduled_date", { ascending: true }),
       ]);
 
       if (patientRes.error) throw patientRes.error;
+      if (medRes.error) throw medRes.error;
+      if (apptRes.error) throw apptRes.error;
       setPatient(patientRes.data);
-      setMedications(medRes.data ?? []);
-      setAppointments(apptRes.data ?? []);
+      setMedications((medRes.data as Medication[]) ?? []);
+      setAppointments((apptRes.data as Appointment[]) ?? []);
     } catch (err: any) {
       setError(err.message ?? "Terjadi kesalahan");
     } finally {
@@ -99,28 +131,29 @@ export default function PatientDetailScreen() {
     }
   }
 
-  function getGenderIcon(notes: string | null) {
+  // ─── Gender helpers ───────────────────────────────────────────────────────
+  function getGenderIcon(notes: string | null): string {
     if (notes === "Laki-laki") return "male";
     if (notes === "Perempuan") return "female";
     return "person";
   }
 
-  function getGenderColor(notes: string | null) {
+  function getGenderColor(notes: string | null): string {
     if (notes === "Laki-laki") return BLUE;
     if (notes === "Perempuan") return PINK;
     return TEXT_MUTED;
   }
 
-  function getAgeLabel(age: number) {
+  function getAgeLabel(age: number): string {
     if (age < 13) return "Anak-anak";
     if (age < 18) return "Remaja";
     if (age < 60) return "Dewasa";
     return "Lansia";
   }
 
-  function formatDate(dateStr: string) {
-    const d = new Date(dateStr);
-    return d.toLocaleDateString("id-ID", {
+  // ─── Date helpers ─────────────────────────────────────────────────────────
+  function formatDate(dateStr: string): string {
+    return new Date(dateStr + "T00:00:00").toLocaleDateString("id-ID", {
       weekday: "long",
       day: "numeric",
       month: "long",
@@ -128,36 +161,49 @@ export default function PatientDetailScreen() {
     });
   }
 
-  function formatTime(dateStr: string) {
-    const d = new Date(dateStr);
-    return d.toLocaleTimeString("id-ID", {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+  // scheduled_time dari DB berupa "HH:MM:SS"
+  function formatTime(timeStr: string): string {
+    return timeStr.slice(0, 5);
   }
 
-  function getAppointmentStatus(appt: Appointment) {
+  // ─── Appointment helpers ──────────────────────────────────────────────────
+  function getAppointmentStatus(appt: Appointment): {
+    label: string;
+    color: string;
+    bg: string;
+  } {
     if (appt.status === "completed")
       return { label: "Selesai", color: PRIMARY, bg: PRIMARY_LIGHT };
     if (appt.status === "cancelled")
       return { label: "Dibatalkan", color: "#EF4444", bg: "#FEF2F2" };
-    const isPast = new Date(appt.scheduled_at) < new Date();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const isPast = new Date(appt.scheduled_date + "T00:00:00") < today;
     if (isPast) return { label: "Terlewat", color: ORANGE, bg: "#FFFBEB" };
     return { label: "Akan Datang", color: PURPLE, bg: "#F5F3FF" };
   }
 
-  function getUpcomingAppointments() {
+  function getUpcomingAppointments(): Appointment[] {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
     return appointments.filter(
-      (a) => a.status === "scheduled" && new Date(a.scheduled_at) >= new Date(),
+      (a) =>
+        a.status === "scheduled" &&
+        new Date(a.scheduled_date + "T00:00:00") >= today,
     );
   }
 
-  function getPastAppointments() {
+  function getPastAppointments(): Appointment[] {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
     return appointments.filter(
-      (a) => a.status !== "scheduled" || new Date(a.scheduled_at) < new Date(),
+      (a) =>
+        a.status !== "scheduled" ||
+        new Date(a.scheduled_date + "T00:00:00") < today,
     );
   }
 
+  // ─── Loading / Error states ───────────────────────────────────────────────
   if (loading) {
     return (
       <SafeAreaView style={styles.safe}>
@@ -187,6 +233,7 @@ export default function PatientDetailScreen() {
     );
   }
 
+  // ─── Derived data ─────────────────────────────────────────────────────────
   const genderColor = getGenderColor(patient.notes);
   const genderIcon = getGenderIcon(patient.notes);
   const upcomingAppts = getUpcomingAppointments();
@@ -194,6 +241,7 @@ export default function PatientDetailScreen() {
   const activeMeds = medications.filter((m) => m.is_active);
   const inactiveMeds = medications.filter((m) => !m.is_active);
 
+  // ─── Render ───────────────────────────────────────────────────────────────
   return (
     <SafeAreaView style={styles.safe}>
       {/* Header */}
@@ -212,7 +260,7 @@ export default function PatientDetailScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* Profile Card */}
+        {/* ── Profile Card ── */}
         <View style={styles.profileCard}>
           <View
             style={[
@@ -253,7 +301,6 @@ export default function PatientDetailScreen() {
             </View>
           </View>
 
-          {/* Diagnosis */}
           {patient.diagnosis && patient.diagnosis !== "-" && (
             <View style={styles.diagnosisBox}>
               <Ionicons name="medical-outline" size={14} color={TEXT_MUTED} />
@@ -262,25 +309,25 @@ export default function PatientDetailScreen() {
           )}
         </View>
 
-        {/* Stats Row */}
+        {/* ── Stats Row ── */}
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
             <Text style={styles.statNumber}>{activeMeds.length}</Text>
             <Text style={styles.statLabel}>Obat Aktif</Text>
           </View>
-          <View style={[styles.statDivider]} />
+          <View style={styles.statDivider} />
           <View style={styles.statCard}>
             <Text style={styles.statNumber}>{upcomingAppts.length}</Text>
             <Text style={styles.statLabel}>Jadwal Cek-up</Text>
           </View>
-          <View style={[styles.statDivider]} />
+          <View style={styles.statDivider} />
           <View style={styles.statCard}>
             <Text style={styles.statNumber}>{pastAppts.length}</Text>
             <Text style={styles.statLabel}>Riwayat</Text>
           </View>
         </View>
 
-        {/* Section: Obat Aktif */}
+        {/* ── Obat Aktif ── */}
         <SectionHeader
           icon="medkit"
           title="Obat yang Dikonsumsi"
@@ -301,37 +348,38 @@ export default function PatientDetailScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={styles.medName}>{med.name}</Text>
                 <View style={styles.medMeta}>
-                  {med.dosage ? (
+                  {med.dose ? (
                     <Chip
                       icon="flask-outline"
-                      label={med.dosage}
+                      label={med.dose}
                       color={PRIMARY}
                     />
                   ) : null}
-                  {med.frequency ? (
+                  {med.schedules?.map((s) => (
                     <Chip
-                      icon="repeat-outline"
-                      label={med.frequency}
-                      color={PURPLE}
-                    />
-                  ) : null}
-                  {med.time_of_day ? (
-                    <Chip
+                      key={s}
                       icon="time-outline"
-                      label={med.time_of_day}
+                      label={formatScheduleLabel(s)}
                       color={ORANGE}
                     />
-                  ) : null}
+                  ))}
+                  <Chip
+                    icon="cube-outline"
+                    label={`Stok: ${med.stock}`}
+                    color={PURPLE}
+                  />
                 </View>
-                {med.notes ? (
-                  <Text style={styles.medNote}>{med.notes}</Text>
+                {med.expiry_date ? (
+                  <Text style={styles.medNote}>
+                    Exp: {formatDate(med.expiry_date)}
+                  </Text>
                 ) : null}
               </View>
             </View>
           ))
         )}
 
-        {/* Section: Obat Tidak Aktif */}
+        {/* ── Obat Tidak Aktif ── */}
         {inactiveMeds.length > 0 && (
           <>
             <SectionHeader
@@ -355,8 +403,8 @@ export default function PatientDetailScreen() {
                   <Text style={[styles.medName, { color: TEXT_MUTED }]}>
                     {med.name}
                   </Text>
-                  {med.dosage ? (
-                    <Text style={styles.medNote}>{med.dosage}</Text>
+                  {med.dose ? (
+                    <Text style={styles.medNote}>{med.dose}</Text>
                   ) : null}
                 </View>
               </View>
@@ -364,7 +412,7 @@ export default function PatientDetailScreen() {
           </>
         )}
 
-        {/* Section: Jadwal Cek-up */}
+        {/* ── Jadwal Cek-up ── */}
         <SectionHeader
           icon="calendar"
           title="Jadwal Cek-up"
@@ -388,7 +436,7 @@ export default function PatientDetailScreen() {
           ))
         )}
 
-        {/* Section: Riwayat Cek-up */}
+        {/* ── Riwayat Cek-up ── */}
         {pastAppts.length > 0 && (
           <>
             <SectionHeader
@@ -416,7 +464,7 @@ export default function PatientDetailScreen() {
   );
 }
 
-/* ─── Sub-components ─── */
+// ─── Sub-components ───────────────────────────────────────────────────────────
 
 function SectionHeader({
   icon,
@@ -483,7 +531,7 @@ function AppointmentCard({
 }: {
   appt: Appointment;
   formatDate: (d: string) => string;
-  formatTime: (d: string) => string;
+  formatTime: (t: string) => string;
   getAppointmentStatus: (a: Appointment) => {
     label: string;
     color: string;
@@ -492,19 +540,22 @@ function AppointmentCard({
   faded?: boolean;
 }) {
   const status = getAppointmentStatus(appt);
+  const day = new Date(appt.scheduled_date + "T00:00:00").getDate();
+  const month = new Date(appt.scheduled_date + "T00:00:00").toLocaleDateString(
+    "id-ID",
+    {
+      month: "short",
+    },
+  );
+
   return (
     <View style={[apptStyles.card, faded && { opacity: 0.6 }]}>
       {/* Date strip */}
       <View style={apptStyles.dateStrip}>
-        <Text style={apptStyles.dateDay}>
-          {new Date(appt.scheduled_at).getDate()}
-        </Text>
-        <Text style={apptStyles.dateMonth}>
-          {new Date(appt.scheduled_at).toLocaleDateString("id-ID", {
-            month: "short",
-          })}
-        </Text>
+        <Text style={apptStyles.dateDay}>{day}</Text>
+        <Text style={apptStyles.dateMonth}>{month}</Text>
       </View>
+
       {/* Info */}
       <View style={{ flex: 1 }}>
         <View style={apptStyles.topRow}>
@@ -517,22 +568,24 @@ function AppointmentCard({
             </Text>
           </View>
         </View>
-        {appt.specialization ? (
-          <Text style={apptStyles.spec}>{appt.specialization}</Text>
-        ) : null}
+
+        {/* Tipe appointment */}
+        <Text style={apptStyles.spec}>
+          {formatAppointmentType(appt.appointment_type)}
+        </Text>
+
         <View style={apptStyles.metaRow}>
-          <Ionicons name="time-outline" size={12} color="#A0B5AC" />
+          <Ionicons name="time-outline" size={12} color={TEXT_MUTED} />
           <Text style={apptStyles.metaText}>
-            {formatTime(appt.scheduled_at)}
+            {formatTime(appt.scheduled_time)}
           </Text>
-          {appt.location ? (
-            <>
-              <View style={apptStyles.dot} />
-              <Ionicons name="location-outline" size={12} color="#A0B5AC" />
-              <Text style={apptStyles.metaText}>{appt.location}</Text>
-            </>
-          ) : null}
+          <View style={apptStyles.dot} />
+          <Ionicons name="location-outline" size={12} color={TEXT_MUTED} />
+          <Text style={apptStyles.metaText} numberOfLines={1}>
+            {appt.hospital_name}
+          </Text>
         </View>
+
         {appt.notes ? (
           <Text style={apptStyles.apptNote}>{appt.notes}</Text>
         ) : null}
@@ -541,8 +594,7 @@ function AppointmentCard({
   );
 }
 
-/* ─── Styles ─── */
-
+// ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: BG },
   center: {
@@ -791,7 +843,12 @@ const apptStyles = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: 2,
   },
-  doctorName: { fontSize: 14, fontWeight: "700", color: TEXT_DARK, flex: 1 },
+  doctorName: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: TEXT_DARK,
+    flex: 1,
+  },
   statusBadge: {
     paddingHorizontal: 8,
     paddingVertical: 3,
@@ -800,8 +857,18 @@ const apptStyles = StyleSheet.create({
   },
   statusText: { fontSize: 11, fontWeight: "700" },
   spec: { fontSize: 12, color: TEXT_MUTED, marginBottom: 4 },
-  metaRow: { flexDirection: "row", alignItems: "center", gap: 4 },
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    flexWrap: "wrap",
+  },
   metaText: { fontSize: 12, color: TEXT_MUTED },
   dot: { width: 3, height: 3, borderRadius: 2, backgroundColor: TEXT_MUTED },
-  apptNote: { fontSize: 12, color: TEXT_MUTED, marginTop: 6, lineHeight: 16 },
+  apptNote: {
+    fontSize: 12,
+    color: TEXT_MUTED,
+    marginTop: 6,
+    lineHeight: 16,
+  },
 });
