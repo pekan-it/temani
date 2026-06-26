@@ -36,7 +36,15 @@
         }
       ],
       "expo-secure-store",
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/logotemani.png",
+          "color": "#2D6A4F",
+          "sounds": []
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

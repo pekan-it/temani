@@ -1,10 +1,16 @@
+import { registerPushToken } from "@/lib/notifications";
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
+import { useEffect } from "react";
 
 const PRIMARY = "#2D6A4F";
 const MUTED = "#A0B5AC";
 
 export default function AppLayout() {
+  useEffect(() => {
+    registerPushToken();
+  }, []);
+
   return (
     <Tabs
       screenOptions={{
