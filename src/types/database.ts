@@ -120,6 +120,15 @@ export interface Database {
         Args: { med_id: string };
         Returns: void;
       };
+      create_family_for_owner: {
+        Args: {
+          p_family_name: string;
+          p_family_code: string;
+          p_full_name: string;
+          p_email: string;
+        };
+        Returns: string;
+      };
     };
   };
 }
