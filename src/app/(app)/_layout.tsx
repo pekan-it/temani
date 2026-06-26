@@ -47,6 +47,7 @@ export default function AppLayout() {
         name="care-score/index"
         options={{
           title: "Care Score",
+          href: null,
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="stats-chart-outline" size={size} color={color} />
           ),
@@ -56,11 +57,51 @@ export default function AppLayout() {
         name="settings/index"
         options={{
           title: "Pengaturan",
+          href: null,
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="settings-outline" size={size} color={color} />
           ),
         }}
       />
+      <Tabs.Screen
+        name="medications/index"
+        options={{
+          title: "Obat",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="medkit-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="appointments/add"
+        options={{
+          title: "Jadwal",
+          href: null,
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="calendar-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="appointments/index"
+        options={{
+          title: "Jadwal",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="calendar-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="settings/change-password"
+        options={{
+          title: "Password",
+          href: null,
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="medkit-outline" size={size} color={color} />
+          ),
+        }}
+      />
+
       {/* Sembunyikan route nested dari tab bar */}
       <Tabs.Screen name="patients/add" options={{ href: null }} />
       <Tabs.Screen name="patients/[id]/index" options={{ href: null }} />

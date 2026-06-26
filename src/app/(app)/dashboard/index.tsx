@@ -1,6 +1,10 @@
+import { supabase } from "@/lib/supabase/client"; // ← sesuaikan path jika berbeda
 import { Ionicons } from "@expo/vector-icons";
-import { useState } from "react";
+import { router } from "expo-router";
+import { useEffect, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
+  RefreshControl,
   SafeAreaView,
   ScrollView,
   StatusBar,
@@ -10,112 +14,54 @@ import {
   View,
 } from "react-native";
 
-// ─── Tipe data lokal ─────────────────────────────────────────────────────────
+// ─── Tipe data ────────────────────────────────────────────────────────────────
+type Profile = {
+  id: string;
+  full_name: string;
+  role: "owner" | "caregiver";
+  family_id: string;
+};
+
 type Patient = {
   id: string;
   name: string;
-  relation: string;
-  careScore: number;
-  conditions: string[];
-  avatarColor: string;
+  age: number;
+  diagnosis: string;
+  notes: string | null;
 };
 
-type Medication = {
+type MedicationLog = {
   id: string;
-  patientId: string;
-  name: string;
-  time: string;
+  medication_id: string;
+  patient_id: string;
+  schedule: "pagi" | "siang" | "malam" | "sebelum_tidur";
+  date: string;
   confirmed: boolean;
-  dose: string;
+  confirmed_by: string | null;
+  confirmed_at: string | null;
+  medications: { name: string; dose: string };
+  patients: { name: string };
 };
 
 type Appointment = {
   id: string;
-  patientId: string;
-  patientName: string;
-  doctorName: string;
-  hospital: string;
-  type: string;
-  date: string;
-  daysLeft: number;
+  patient_id: string;
+  hospital_name: string;
+  doctor_name: string;
+  appointment_type: "kontrol_rutin" | "ambil_resep" | "cek_lab" | "lainnya";
+  scheduled_date: string;
+  scheduled_time: string;
+  status: "scheduled" | "completed" | "cancelled";
+  notes: string | null;
+  patients: { name: string };
 };
-
-// ─── Data dummy (nanti diganti dengan Supabase realtime) ──────────────────────
-const DUMMY_PATIENTS: Patient[] = [
-  {
-    id: "1",
-    name: "Bapak Hendra",
-    relation: "Ayah",
-    careScore: 82,
-    conditions: ["Diabetes", "Hipertensi"],
-    avatarColor: "#4A90A4",
-  },
-  {
-    id: "2",
-    name: "Ibu Sari",
-    relation: "Ibu",
-    careScore: 65,
-    conditions: ["Asma"],
-    avatarColor: "#7B68EE",
-  },
-];
-
-const DUMMY_MEDICATIONS: Medication[] = [
-  {
-    id: "m1",
-    patientId: "1",
-    name: "Metformin 500mg",
-    time: "07:00",
-    confirmed: true,
-    dose: "1 tablet",
-  },
-  {
-    id: "m2",
-    patientId: "1",
-    name: "Amlodipine 5mg",
-    time: "08:00",
-    confirmed: false,
-    dose: "1 tablet",
-  },
-  {
-    id: "m3",
-    patientId: "2",
-    name: "Salbutamol",
-    time: "09:00",
-    confirmed: false,
-    dose: "2 puff",
-  },
-];
-
-const DUMMY_APPOINTMENTS: Appointment[] = [
-  {
-    id: "a1",
-    patientId: "1",
-    patientName: "Bapak Hendra",
-    doctorName: "dr. Budi Santoso, Sp.PD",
-    hospital: "RS Panti Waluya",
-    type: "Kontrol Rutin",
-    date: "Rabu, 25 Jun 2025",
-    daysLeft: 4,
-  },
-  {
-    id: "a2",
-    patientId: "2",
-    patientName: "Ibu Sari",
-    doctorName: "dr. Rina Hartati, Sp.P",
-    hospital: "Klinik Sehat Bersama",
-    type: "Ambil Resep",
-    date: "Jumat, 27 Jun 2025",
-    daysLeft: 6,
-  },
-];
 
 // ─── Warna tema ───────────────────────────────────────────────────────────────
 const COLORS = {
-  primary: "#2D6A4F", // hijau tua — kepercayaan, kesehatan
-  primaryLight: "#52B788", // hijau muda
-  accent: "#F4A261", // oranye hangat — kehangatan keluarga
-  surface: "#F8FAF9", // latar bersih
+  primary: "#2D6A4F",
+  primaryLight: "#52B788",
+  accent: "#F4A261",
+  surface: "#F8FAF9",
   card: "#FFFFFF",
   textPrimary: "#1B2D27",
   textSecondary: "#6B8F7E",
@@ -126,26 +72,189 @@ const COLORS = {
   border: "#E8F0ED",
 };
 
+const AVATAR_COLORS = ["#4A90A4", "#7B68EE", "#E76F51", "#52B788", "#F4A261"];
+
 // ─── Helper ───────────────────────────────────────────────────────────────────
-function getCareScoreColor(score: number): string {
-  if (score >= 80) return COLORS.success;
-  if (score >= 60) return COLORS.warning;
-  return COLORS.danger;
+export function getGreeting(): string {
+  const hour = Number(
+    new Intl.DateTimeFormat("id-ID", {
+      hour: "numeric",
+      hour12: false,
+      timeZone: "Asia/Jakarta",
+    }).format(new Date()),
+  );
+
+  if (hour >= 4 && hour < 11) return "Selamat pagi";
+  if (hour >= 11 && hour < 15) return "Selamat siang";
+  if (hour >= 15 && hour < 18) return "Selamat sore";
+  return "Selamat malam";
 }
 
-function getCareScoreLabel(score: number): string {
-  if (score >= 80) return "Sangat Baik";
-  if (score >= 60) return "Cukup Baik";
-  return "Perlu Perhatian";
+// Dihitung fresh setiap komponen mount — tidak stale
+function useGreeting(): string {
+  return useMemo(() => getGreeting(), []);
+}
+
+function getTodayISO(): string {
+  return new Date().toISOString().split("T")[0];
+}
+
+function getDaysLeft(scheduledDate: string): number {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const target = new Date(scheduledDate);
+  target.setHours(0, 0, 0, 0);
+  return Math.round(
+    (target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
+  );
+}
+
+function formatAppointmentDate(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString("id-ID", {
+    weekday: "long",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function formatScheduleLabel(
+  schedule: "pagi" | "siang" | "malam" | "sebelum_tidur",
+): string {
+  const map = {
+    pagi: "07:00",
+    siang: "12:00",
+    malam: "19:00",
+    sebelum_tidur: "21:00",
+  };
+  return map[schedule];
+}
+
+function formatAppointmentType(
+  type: "kontrol_rutin" | "ambil_resep" | "cek_lab" | "lainnya",
+): string {
+  const map = {
+    kontrol_rutin: "Kontrol Rutin",
+    ambil_resep: "Ambil Resep",
+    cek_lab: "Cek Lab",
+    lainnya: "Lainnya",
+  };
+  return map[type];
+}
+
+// ─── Hook: profil user yang login ────────────────────────────────────────────
+function useProfile() {
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      const userId = data?.user?.id;
+      if (!userId) {
+        setLoading(false);
+        return;
+      }
+      supabase
+        .from("profiles")
+        .select("id, full_name, role, family_id")
+        .eq("id", userId)
+        .single()
+        .then(({ data: p }) => {
+          setProfile(p ?? null);
+          setLoading(false);
+        });
+    });
+  }, []);
+
+  return { profile, loading };
+}
+
+// ─── Hook: semua data dashboard ───────────────────────────────────────────────
+function useDashboardData(familyId: string | null | undefined) {
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [medLogs, setMedLogs] = useState<MedicationLog[]>([]);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  async function fetchAll(isRefresh = false) {
+    if (!familyId) return;
+    isRefresh ? setRefreshing(true) : setLoading(true);
+
+    const today = getTodayISO();
+
+    // 1. Pasien
+    const { data: patientsData } = await supabase
+      .from("patients")
+      .select("id, name, age, diagnosis, notes")
+      .eq("family_id", familyId)
+      .order("created_at", { ascending: true });
+
+    const fetchedPatients: Patient[] = patientsData ?? [];
+    setPatients(fetchedPatients);
+
+    if (fetchedPatients.length === 0) {
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+
+    const patientIds = fetchedPatients.map((p) => p.id);
+
+    // 2. Log obat hari ini
+    const { data: logsData } = await supabase
+      .from("medication_logs")
+      .select(
+        "id, medication_id, patient_id, schedule, date, confirmed, confirmed_by, confirmed_at, medications(name, dose), patients(name)",
+      )
+      .in("patient_id", patientIds)
+      .eq("date", today)
+      .order("schedule", { ascending: true });
+
+    setMedLogs((logsData as unknown as MedicationLog[]) ?? []);
+
+    // 3. Jadwal cek-up mendatang
+    const { data: apptData } = await supabase
+      .from("appointments")
+      .select(
+        "id, patient_id, hospital_name, doctor_name, appointment_type, scheduled_date, scheduled_time, status, notes, patients(name)",
+      )
+      .eq("family_id", familyId)
+      .eq("status", "scheduled")
+      .gte("scheduled_date", today)
+      .order("scheduled_date", { ascending: true })
+      .limit(5);
+
+    setAppointments((apptData as unknown as Appointment[]) ?? []);
+
+    setLoading(false);
+    setRefreshing(false);
+  }
+
+  useEffect(() => {
+    if (familyId) fetchAll();
+  }, [familyId]);
+
+  return {
+    patients,
+    medLogs,
+    appointments,
+    loading,
+    refreshing,
+    refetch: () => fetchAll(true),
+  };
 }
 
 // ─── Komponen: Header ─────────────────────────────────────────────────────────
-function DashboardHeader() {
+function DashboardHeader({ profile }: { profile: Profile | null }) {
+  const greeting = useGreeting();
+  const firstName = profile?.full_name?.split(" ")[0] ?? "...";
+
   return (
     <View style={styles.header}>
       <View>
-        <Text style={styles.headerGreeting}>Selamat pagi,</Text>
-        <Text style={styles.headerName}>Tian 👋</Text>
+        <Text style={styles.headerGreeting}>{greeting},</Text>
+        <Text style={styles.headerName}>{firstName}</Text>
       </View>
       <View style={styles.headerRight}>
         <TouchableOpacity style={styles.notifButton}>
@@ -156,8 +265,13 @@ function DashboardHeader() {
           />
           <View style={styles.notifBadge} />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.avatarButton}>
-          <Text style={styles.avatarText}>T</Text>
+        <TouchableOpacity
+          style={styles.avatarButton}
+          onPress={() => router.push("/(app)/settings")}
+        >
+          <Text style={styles.avatarText}>
+            {firstName.charAt(0).toUpperCase()}
+          </Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -167,15 +281,40 @@ function DashboardHeader() {
 // ─── Komponen: Kartu Pasien ───────────────────────────────────────────────────
 function PatientCard({
   patient,
+  index,
   isActive,
   onPress,
+  medLogs,
 }: {
   patient: Patient;
+  index: number;
   isActive: boolean;
   onPress: () => void;
+  medLogs: MedicationLog[];
 }) {
-  const scoreColor = getCareScoreColor(patient.careScore);
-  const scoreLabel = getCareScoreLabel(patient.careScore);
+  const patientLogs = medLogs.filter((l) => l.patient_id === patient.id);
+  const confirmed = patientLogs.filter((l) => l.confirmed).length;
+  const total = patientLogs.length;
+  const careScore = total > 0 ? Math.round((confirmed / total) * 100) : 100;
+
+  const scoreColor =
+    careScore >= 80
+      ? COLORS.success
+      : careScore >= 60
+        ? COLORS.warning
+        : COLORS.danger;
+  const scoreLabel =
+    careScore >= 80
+      ? "Sangat Baik"
+      : careScore >= 60
+        ? "Cukup Baik"
+        : "Perlu Perhatian";
+
+  const avatarColor = AVATAR_COLORS[index % AVATAR_COLORS.length];
+  const conditions = patient.diagnosis
+    .split(",")
+    .map((c) => c.trim())
+    .filter(Boolean);
 
   return (
     <TouchableOpacity
@@ -183,18 +322,17 @@ function PatientCard({
       onPress={onPress}
       activeOpacity={0.85}
     >
-      {/* Avatar */}
-      <View
-        style={[styles.patientAvatar, { backgroundColor: patient.avatarColor }]}
-      >
-        <Text style={styles.patientAvatarText}>{patient.name.charAt(0)}</Text>
+      <View style={[styles.patientAvatar, { backgroundColor: avatarColor }]}>
+        <Text style={styles.patientAvatarText}>
+          {patient.name.charAt(0).toUpperCase()}
+        </Text>
       </View>
 
       <View style={styles.patientInfo}>
-        <Text style={styles.patientRelation}>{patient.relation}</Text>
+        <Text style={styles.patientMeta}>{patient.age} tahun</Text>
         <Text style={styles.patientName}>{patient.name}</Text>
         <View style={styles.patientTags}>
-          {patient.conditions.map((c) => (
+          {conditions.slice(0, 2).map((c) => (
             <View key={c} style={styles.conditionTag}>
               <Text style={styles.conditionTagText}>{c}</Text>
             </View>
@@ -202,21 +340,16 @@ function PatientCard({
         </View>
       </View>
 
-      {/* Care Score */}
       <View style={styles.careScoreBox}>
         <Text style={[styles.careScoreNum, { color: scoreColor }]}>
-          {patient.careScore}
+          {careScore}
         </Text>
         <Text style={styles.careScoreLabel}>{scoreLabel}</Text>
-        {/* Mini bar */}
         <View style={styles.careScoreBar}>
           <View
             style={[
               styles.careScoreBarFill,
-              {
-                width: `${patient.careScore}%` as any,
-                backgroundColor: scoreColor,
-              },
+              { width: `${careScore}%` as any, backgroundColor: scoreColor },
             ]}
           />
         </View>
@@ -225,45 +358,45 @@ function PatientCard({
   );
 }
 
-// ─── Komponen: Obat Hari Ini ──────────────────────────────────────────────────
+// ─── Komponen: Item Obat ──────────────────────────────────────────────────────
 function MedicationItem({
-  med,
+  log,
   onConfirm,
 }: {
-  med: Medication;
-  onConfirm: (id: string) => void;
+  log: MedicationLog;
+  onConfirm: (logId: string) => void;
 }) {
   return (
-    <View style={[styles.medItem, med.confirmed && styles.medItemConfirmed]}>
+    <View style={[styles.medItem, log.confirmed && styles.medItemConfirmed]}>
       <View
         style={[
           styles.medIcon,
-          { backgroundColor: med.confirmed ? "#E8F5E9" : "#FFF3E0" },
+          { backgroundColor: log.confirmed ? "#E8F5E9" : "#FFF3E0" },
         ]}
       >
         <Ionicons
-          name={med.confirmed ? "checkmark-circle" : "medical"}
+          name={log.confirmed ? "checkmark-circle" : "medical"}
           size={20}
-          color={med.confirmed ? COLORS.success : COLORS.warning}
+          color={log.confirmed ? COLORS.success : COLORS.warning}
         />
       </View>
       <View style={styles.medInfo}>
-        <Text style={[styles.medName, med.confirmed && styles.medNameDone]}>
-          {med.name}
+        <Text style={[styles.medName, log.confirmed && styles.medNameDone]}>
+          {log.medications?.name ?? "-"}
         </Text>
         <Text style={styles.medDetail}>
-          {med.dose} · {med.time}
+          {log.medications?.dose ?? "-"} · {formatScheduleLabel(log.schedule)} ·{" "}
+          {log.patients?.name ?? "-"}
         </Text>
       </View>
-      {!med.confirmed && (
+      {!log.confirmed ? (
         <TouchableOpacity
           style={styles.confirmBtn}
-          onPress={() => onConfirm(med.id)}
+          onPress={() => onConfirm(log.id)}
         >
           <Text style={styles.confirmBtnText}>Sudah</Text>
         </TouchableOpacity>
-      )}
-      {med.confirmed && (
+      ) : (
         <View style={styles.confirmedBadge}>
           <Text style={styles.confirmedBadgeText}>✓</Text>
         </View>
@@ -272,194 +405,277 @@ function MedicationItem({
   );
 }
 
-// ─── Komponen: Jadwal Cek-up ──────────────────────────────────────────────────
+// ─── Komponen: Kartu Jadwal Cek-up ───────────────────────────────────────────
 function AppointmentCard({ appt }: { appt: Appointment }) {
-  const urgentColor = appt.daysLeft <= 3 ? COLORS.danger : COLORS.primary;
+  const daysLeft = getDaysLeft(appt.scheduled_date);
+  const urgentColor = daysLeft <= 3 ? COLORS.danger : COLORS.primary;
 
   return (
     <TouchableOpacity style={styles.apptCard} activeOpacity={0.85}>
       <View style={[styles.apptDateBadge, { backgroundColor: urgentColor }]}>
-        <Text style={styles.apptDaysNum}>{appt.daysLeft}</Text>
+        <Text style={styles.apptDaysNum}>{daysLeft}</Text>
         <Text style={styles.apptDaysLabel}>hari</Text>
       </View>
       <View style={styles.apptInfo}>
-        <Text style={styles.apptPatient}>{appt.patientName}</Text>
-        <Text style={styles.apptDoctor}>{appt.doctorName}</Text>
+        <Text style={styles.apptPatient}>{appt.patients?.name ?? "-"}</Text>
+        <Text style={styles.apptDoctor}>{appt.doctor_name}</Text>
         <Text style={styles.apptHospital}>
           <Ionicons
             name="location-outline"
             size={11}
             color={COLORS.textMuted}
           />{" "}
-          {appt.hospital}
+          {appt.hospital_name}
         </Text>
-        <View style={[styles.apptTypeBadge]}>
-          <Text style={styles.apptTypeText}>{appt.type}</Text>
+        <View style={styles.apptTypeBadge}>
+          <Text style={styles.apptTypeText}>
+            {formatAppointmentType(appt.appointment_type)}
+          </Text>
         </View>
       </View>
       <View style={styles.apptDate}>
-        <Text style={styles.apptDateText}>{appt.date}</Text>
+        <Text style={styles.apptDateText}>
+          {formatAppointmentDate(appt.scheduled_date)}
+        </Text>
         <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
       </View>
     </TouchableOpacity>
   );
 }
 
-// ─── Komponen: Quick Action ───────────────────────────────────────────────────
-function QuickActions() {
-  const actions = [
-    {
-      icon: "medical-outline",
-      label: "Tambah\nObat",
-      color: "#E8F5F0",
-      iconColor: COLORS.primary,
-    },
-    {
-      icon: "calendar-outline",
-      label: "Jadwal\nCek-up",
-      color: "#FFF3E0",
-      iconColor: COLORS.warning,
-    },
-    {
-      icon: "people-outline",
-      label: "Undang\nKeluarga",
-      color: "#EDE7F6",
-      iconColor: "#7B68EE",
-    },
-    {
-      icon: "stats-chart-outline",
-      label: "Care\nScore",
-      color: "#E3F2FD",
-      iconColor: "#2196F3",
-    },
-  ];
+// ─── Komponen: Quick Actions ──────────────────────────────────────────────────
+// function QuickActions() {
+//   const actions = [
+//     {
+//       icon: "medical-outline",
+//       label: "Tambah\nObat",
+//       color: "#E8F5F0",
+//       iconColor: COLORS.primary,
+//       route: "/(app)/medications/add",
+//     },
+//     {
+//       icon: "calendar-outline",
+//       label: "Jadwal\nCek-up",
+//       color: "#FFF3E0",
+//       iconColor: COLORS.warning,
+//       route: "/(app)/appointments/add",
+//     },
+//     {
+//       icon: "people-outline",
+//       label: "Undang\nKeluarga",
+//       color: "#EDE7F6",
+//       iconColor: "#7B68EE",
+//       route: "/(app)/family/invite",
+//     },
+//     {
+//       icon: "stats-chart-outline",
+//       label: "Riwayat\nObat",
+//       color: "#E3F2FD",
+//       iconColor: "#2196F3",
+//       route: "/(app)/medications/history",
+//     },
+//   ];
 
-  return (
-    <View style={styles.quickActionsRow}>
-      {actions.map((a) => (
-        <TouchableOpacity
-          key={a.label}
-          style={styles.quickActionItem}
-          activeOpacity={0.8}
-        >
-          <View style={[styles.quickActionIcon, { backgroundColor: a.color }]}>
-            <Ionicons name={a.icon as any} size={22} color={a.iconColor} />
-          </View>
-          <Text style={styles.quickActionLabel}>{a.label}</Text>
-        </TouchableOpacity>
-      ))}
-    </View>
-  );
-}
+//   return (
+//     <View style={styles.quickActionsRow}>
+//       {actions.map((a) => (
+//         <TouchableOpacity
+//           key={a.label}
+//           style={styles.quickActionItem}
+//           activeOpacity={0.8}
+//           onPress={() => router.push(a.route as any)}
+//         >
+//           <View style={[styles.quickActionIcon, { backgroundColor: a.color }]}>
+//             <Ionicons name={a.icon as any} size={22} color={a.iconColor} />
+//           </View>
+//           <Text style={styles.quickActionLabel}>{a.label}</Text>
+//         </TouchableOpacity>
+//       ))}
+//     </View>
+//   );
+// }
 
-// ─── Layar Utama ─────────────────────────────────────────────────────────────
+// ─── Layar Utama ──────────────────────────────────────────────────────────────
 export default function DashboardScreen() {
-  const [activePatientId, setActivePatientId] = useState<string>("1");
-  const [medications, setMedications] =
-    useState<Medication[]>(DUMMY_MEDICATIONS);
+  const { profile, loading: profileLoading } = useProfile();
+  const {
+    patients,
+    medLogs,
+    appointments,
+    loading: dataLoading,
+    refreshing,
+    refetch,
+  } = useDashboardData(profile?.family_id);
 
-  const activeMeds = medications.filter((m) => m.patientId === activePatientId);
-  const confirmedCount = activeMeds.filter((m) => m.confirmed).length;
+  const [activePatientId, setActivePatientId] = useState<string | null>(null);
 
-  function handleConfirm(medId: string) {
-    setMedications((prev) =>
-      prev.map((m) => (m.id === medId ? { ...m, confirmed: true } : m)),
-    );
+  useEffect(() => {
+    if (patients.length > 0 && !activePatientId) {
+      setActivePatientId(patients[0].id);
+    }
+  }, [patients]);
+
+  const activeMedLogs = activePatientId
+    ? medLogs.filter((l) => l.patient_id === activePatientId)
+    : [];
+  const confirmedCount = activeMedLogs.filter((l) => l.confirmed).length;
+
+  async function handleConfirm(logId: string) {
+    const { data: userData } = await supabase.auth.getUser();
+    const userId = userData?.user?.id;
+
+    const { error } = await supabase
+      .from("medication_logs")
+      .update({
+        confirmed: true,
+        confirmed_by: userId ?? null,
+        confirmed_at: new Date().toISOString(),
+      })
+      .eq("id", logId);
+
+    if (!error) refetch();
   }
+
+  const isLoading = profileLoading || dataLoading;
 
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.surface} />
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Header */}
-        <DashboardHeader />
 
-        {/* Quick Actions */}
-        <View style={styles.section}>
-          <QuickActions />
+      {isLoading && !refreshing ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
         </View>
-
-        {/* Pasien yang Dirawat */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Orang yang Dirawat</Text>
-            <TouchableOpacity>
-              <Text style={styles.sectionLink}>+ Tambah</Text>
-            </TouchableOpacity>
-          </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <View style={styles.patientList}>
-              {DUMMY_PATIENTS.map((p) => (
-                <PatientCard
-                  key={p.id}
-                  patient={p}
-                  isActive={activePatientId === p.id}
-                  onPress={() => setActivePatientId(p.id)}
-                />
-              ))}
-            </View>
-          </ScrollView>
-        </View>
-
-        {/* Obat Hari Ini */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Obat Hari Ini</Text>
-            <Text style={styles.sectionMeta}>
-              {confirmedCount}/{activeMeds.length} sudah diminum
-            </Text>
-          </View>
-
-          {/* Progress bar kepatuhan */}
-          <View style={styles.complianceBar}>
-            <View
-              style={[
-                styles.complianceBarFill,
-                {
-                  width: activeMeds.length
-                    ? (`${(confirmedCount / activeMeds.length) * 100}%` as any)
-                    : "0%",
-                },
-              ]}
+      ) : (
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={refetch}
+              tintColor={COLORS.primary}
+              colors={[COLORS.primary]}
             />
+          }
+        >
+          {/* Header */}
+          <DashboardHeader profile={profile} />
+
+          {/* Quick Actions */}
+          {/* <View style={styles.section}>
+            <QuickActions />
+          </View> */}
+
+          {/* Pasien — section tanpa paddingHorizontal agar ScrollView full width */}
+          <View style={styles.sectionNoHpad}>
+            <View style={[styles.sectionHeader, { paddingHorizontal: 20 }]}>
+              <Text style={styles.sectionTitle}>Orang yang Dirawat</Text>
+              <TouchableOpacity
+                onPress={() => router.push("/(app)/patients/add" as any)}
+              >
+                <Text style={styles.sectionLink}>+ Tambah</Text>
+              </TouchableOpacity>
+            </View>
+
+            {patients.length === 0 ? (
+              <View style={[styles.card, { marginHorizontal: 20 }]}>
+                <Text style={styles.emptyText}>
+                  Belum ada pasien. Tap "+ Tambah" untuk menambahkan.
+                </Text>
+              </View>
+            ) : (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.patientScrollContent}
+              >
+                <View style={styles.patientList}>
+                  {patients.map((p, i) => (
+                    <PatientCard
+                      key={p.id}
+                      patient={p}
+                      index={i}
+                      isActive={activePatientId === p.id}
+                      onPress={() => setActivePatientId(p.id)}
+                      medLogs={medLogs}
+                    />
+                  ))}
+                </View>
+              </ScrollView>
+            )}
           </View>
 
-          <View style={styles.card}>
-            {activeMeds.length === 0 ? (
-              <Text style={styles.emptyText}>
-                Belum ada jadwal obat. Tap "+ Tambah Obat" di atas.
+          {/* Obat Hari Ini */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Obat Hari Ini</Text>
+              <Text style={styles.sectionMeta}>
+                {confirmedCount}/{activeMedLogs.length} sudah diminum
               </Text>
+            </View>
+
+            <View style={styles.complianceBar}>
+              <View
+                style={[
+                  styles.complianceBarFill,
+                  {
+                    width:
+                      activeMedLogs.length > 0
+                        ? (`${(confirmedCount / activeMedLogs.length) * 100}%` as any)
+                        : "0%",
+                  },
+                ]}
+              />
+            </View>
+
+            <View style={styles.card}>
+              {activeMedLogs.length === 0 ? (
+                <Text style={styles.emptyText}>
+                  {patients.length === 0
+                    ? "Tambah pasien dulu untuk melihat jadwal obat."
+                    : "Tidak ada jadwal obat hari ini."}
+                </Text>
+              ) : (
+                activeMedLogs.map((log) => (
+                  <MedicationItem
+                    key={log.id}
+                    log={log}
+                    onConfirm={handleConfirm}
+                  />
+                ))
+              )}
+            </View>
+          </View>
+
+          {/* Jadwal Cek-up */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Jadwal Cek-up</Text>
+              <TouchableOpacity
+                onPress={() => router.push("/(app)/appointments" as any)}
+              >
+                <Text style={styles.sectionLink}>Semua</Text>
+              </TouchableOpacity>
+            </View>
+
+            {appointments.length === 0 ? (
+              <View style={styles.card}>
+                <Text style={styles.emptyText}>
+                  Tidak ada jadwal cek-up mendatang.
+                </Text>
+              </View>
             ) : (
-              activeMeds.map((med) => (
-                <MedicationItem
-                  key={med.id}
-                  med={med}
-                  onConfirm={handleConfirm}
-                />
+              appointments.map((appt) => (
+                <AppointmentCard key={appt.id} appt={appt} />
               ))
             )}
           </View>
-        </View>
 
-        {/* Jadwal Cek-up Mendatang */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Jadwal Cek-up</Text>
-            <TouchableOpacity>
-              <Text style={styles.sectionLink}>Semua</Text>
-            </TouchableOpacity>
-          </View>
-          {DUMMY_APPOINTMENTS.map((appt) => (
-            <AppointmentCard key={appt.id} appt={appt} />
-          ))}
-        </View>
-
-        <View style={{ height: 24 }} />
-      </ScrollView>
+          <View style={{ height: 24 }} />
+        </ScrollView>
+      )}
     </SafeAreaView>
   );
 }
@@ -475,6 +691,11 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingBottom: 32,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
   },
 
   // Header
@@ -542,6 +763,9 @@ const styles = StyleSheet.create({
     marginTop: 20,
     paddingHorizontal: 20,
   },
+  sectionNoHpad: {
+    marginTop: 20,
+  },
   sectionHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -563,7 +787,7 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
   },
 
-  // Card wrapper
+  // Card
   card: {
     backgroundColor: COLORS.card,
     borderRadius: 16,
@@ -576,6 +800,7 @@ const styles = StyleSheet.create({
     color: COLORS.textMuted,
     textAlign: "center",
     fontSize: 14,
+    lineHeight: 22,
   },
 
   // Quick Actions
@@ -604,11 +829,14 @@ const styles = StyleSheet.create({
     lineHeight: 15,
   },
 
-  // Patient Card
+  // Patient Cards
+  patientScrollContent: {
+    paddingLeft: 20,
+    paddingRight: 4,
+  },
   patientList: {
     flexDirection: "row",
     gap: 12,
-    paddingRight: 20,
   },
   patientCard: {
     width: 260,
@@ -640,7 +868,7 @@ const styles = StyleSheet.create({
   patientInfo: {
     flex: 1,
   },
-  patientRelation: {
+  patientMeta: {
     fontSize: 11,
     color: COLORS.textMuted,
     fontWeight: "500",
