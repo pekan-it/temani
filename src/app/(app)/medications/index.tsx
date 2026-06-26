@@ -286,7 +286,7 @@ export default function MedicationListScreen() {
         .from("profiles")
         .select("family_id")
         .eq("id", user.id)
-        .single();
+        .single<{ family_id: string | null }>();
 
       if (!profile?.family_id) throw new Error("Family tidak ditemukan");
 

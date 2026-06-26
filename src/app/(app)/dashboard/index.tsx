@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase/client"; // ← sesuaikan path jika berbeda
+import { supabase } from "@/lib/supabase/client";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
@@ -30,11 +30,19 @@ type Patient = {
   notes: string | null;
 };
 
+type Medication = {
+  id: string;
+  patient_id: string;
+  name: string;
+  dose: string;
+  schedules: string[];
+};
+
 type MedicationLog = {
   id: string;
   medication_id: string;
   patient_id: string;
-  schedule: "pagi" | "siang" | "malam" | "sebelum_tidur";
+  schedule: string;
   date: string;
   confirmed: boolean;
   confirmed_by: string | null;
@@ -90,7 +98,6 @@ export function getGreeting(): string {
   return "Selamat malam";
 }
 
-// Dihitung fresh setiap komponen mount — tidak stale
 function useGreeting(): string {
   return useMemo(() => getGreeting(), []);
 }
@@ -118,16 +125,15 @@ function formatAppointmentDate(dateStr: string): string {
   });
 }
 
-function formatScheduleLabel(
-  schedule: "pagi" | "siang" | "malam" | "sebelum_tidur",
-): string {
-  const map = {
+function formatScheduleLabel(schedule: string): string {
+  const key = schedule.split("|")[0];
+  const map: Record<string, string> = {
     pagi: "07:00",
     siang: "12:00",
     malam: "19:00",
     sebelum_tidur: "21:00",
   };
-  return map[schedule];
+  return map[key] ?? key;
 }
 
 function formatAppointmentType(
@@ -201,7 +207,34 @@ function useDashboardData(familyId: string | null | undefined) {
 
     const patientIds = fetchedPatients.map((p) => p.id);
 
-    // 2. Log obat hari ini
+    // 2. Ambil medications aktif
+    const { data: medsData } = await supabase
+      .from("medications")
+      .select("id, patient_id, name, dose, schedules")
+      .in("patient_id", patientIds)
+      .eq("is_active", true);
+
+    const medications: Medication[] = medsData ?? [];
+
+    // 3. Generate logs hari ini jika belum ada
+    if (medications.length > 0) {
+      const logsToUpsert = medications.flatMap((med) =>
+        med.schedules.map((schedule) => ({
+          medication_id: med.id,
+          patient_id: med.patient_id,
+          schedule: schedule.split("|")[0], // strip "|08:00" → ambil "pagi" saja
+          date: today,
+          confirmed: false,
+        })),
+      );
+
+      await supabase.from("medication_logs").upsert(logsToUpsert, {
+        onConflict: "medication_id,schedule,date",
+        ignoreDuplicates: true,
+      });
+    }
+
+    // 4. Fetch logs hari ini
     const { data: logsData } = await supabase
       .from("medication_logs")
       .select(
@@ -213,7 +246,7 @@ function useDashboardData(familyId: string | null | undefined) {
 
     setMedLogs((logsData as unknown as MedicationLog[]) ?? []);
 
-    // 3. Jadwal cek-up mendatang
+    // 5. Jadwal cek-up mendatang
     const { data: apptData } = await supabase
       .from("appointments")
       .select(
@@ -443,58 +476,6 @@ function AppointmentCard({ appt }: { appt: Appointment }) {
   );
 }
 
-// ─── Komponen: Quick Actions ──────────────────────────────────────────────────
-// function QuickActions() {
-//   const actions = [
-//     {
-//       icon: "medical-outline",
-//       label: "Tambah\nObat",
-//       color: "#E8F5F0",
-//       iconColor: COLORS.primary,
-//       route: "/(app)/medications/add",
-//     },
-//     {
-//       icon: "calendar-outline",
-//       label: "Jadwal\nCek-up",
-//       color: "#FFF3E0",
-//       iconColor: COLORS.warning,
-//       route: "/(app)/appointments/add",
-//     },
-//     {
-//       icon: "people-outline",
-//       label: "Undang\nKeluarga",
-//       color: "#EDE7F6",
-//       iconColor: "#7B68EE",
-//       route: "/(app)/family/invite",
-//     },
-//     {
-//       icon: "stats-chart-outline",
-//       label: "Riwayat\nObat",
-//       color: "#E3F2FD",
-//       iconColor: "#2196F3",
-//       route: "/(app)/medications/history",
-//     },
-//   ];
-
-//   return (
-//     <View style={styles.quickActionsRow}>
-//       {actions.map((a) => (
-//         <TouchableOpacity
-//           key={a.label}
-//           style={styles.quickActionItem}
-//           activeOpacity={0.8}
-//           onPress={() => router.push(a.route as any)}
-//         >
-//           <View style={[styles.quickActionIcon, { backgroundColor: a.color }]}>
-//             <Ionicons name={a.icon as any} size={22} color={a.iconColor} />
-//           </View>
-//           <Text style={styles.quickActionLabel}>{a.label}</Text>
-//         </TouchableOpacity>
-//       ))}
-//     </View>
-//   );
-// }
-
 // ─── Layar Utama ──────────────────────────────────────────────────────────────
 export default function DashboardScreen() {
   const { profile, loading: profileLoading } = useProfile();
@@ -530,7 +511,7 @@ export default function DashboardScreen() {
         confirmed: true,
         confirmed_by: userId ?? null,
         confirmed_at: new Date().toISOString(),
-      })
+      } as any)
       .eq("id", logId);
 
     if (!error) refetch();
@@ -563,12 +544,7 @@ export default function DashboardScreen() {
           {/* Header */}
           <DashboardHeader profile={profile} />
 
-          {/* Quick Actions */}
-          {/* <View style={styles.section}>
-            <QuickActions />
-          </View> */}
-
-          {/* Pasien — section tanpa paddingHorizontal agar ScrollView full width */}
+          {/* Pasien */}
           <View style={styles.sectionNoHpad}>
             <View style={[styles.sectionHeader, { paddingHorizontal: 20 }]}>
               <Text style={styles.sectionTitle}>Orang yang Dirawat</Text>
@@ -801,32 +777,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontSize: 14,
     lineHeight: 22,
-  },
-
-  // Quick Actions
-  quickActionsRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 8,
-  },
-  quickActionItem: {
-    flex: 1,
-    alignItems: "center",
-    gap: 6,
-  },
-  quickActionIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  quickActionLabel: {
-    fontSize: 11,
-    color: COLORS.textSecondary,
-    textAlign: "center",
-    fontWeight: "500",
-    lineHeight: 15,
   },
 
   // Patient Cards

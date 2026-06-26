@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   SafeAreaView,
@@ -22,16 +23,44 @@ import {
 
 type Patient = { id: string; name: string };
 
-const SCHEDULES = [
-  { key: "pagi", label: "Pagi", icon: "sunny-outline" as const },
-  { key: "siang", label: "Siang", icon: "partly-sunny-outline" as const },
-  { key: "malam", label: "Malam", icon: "moon-outline" as const },
+type ScheduleEntry = {
+  key: string;
+  label: string;
+  icon:
+    | "sunny-outline"
+    | "partly-sunny-outline"
+    | "moon-outline"
+    | "bed-outline";
+  defaultTime: string; // "HH:MM"
+};
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const SCHEDULES: ScheduleEntry[] = [
+  { key: "pagi", label: "Pagi", icon: "sunny-outline", defaultTime: "07:00" },
+  {
+    key: "siang",
+    label: "Siang",
+    icon: "partly-sunny-outline",
+    defaultTime: "12:00",
+  },
+  { key: "malam", label: "Malam", icon: "moon-outline", defaultTime: "19:00" },
   {
     key: "sebelum_tidur",
     label: "Sebelum Tidur",
-    icon: "bed-outline" as const,
+    icon: "bed-outline",
+    defaultTime: "21:00",
   },
 ];
+
+// schedule disimpan sebagai "pagi|07:00"
+function encodeSchedule(key: string, time: string) {
+  return `${key}|${time}`;
+}
+function decodeSchedule(s: string): { key: string; time: string } {
+  const [key, time] = s.split("|");
+  return { key, time: time ?? "00:00" };
+}
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
@@ -61,25 +90,110 @@ function Field({
   );
 }
 
+// ─── Time Picker Modal ────────────────────────────────────────────────────────
+
+function TimePickerModal({
+  visible,
+  scheduleLabel,
+  time,
+  onConfirm,
+  onClose,
+}: {
+  visible: boolean;
+  scheduleLabel: string;
+  time: Date;
+  onConfirm: (date: Date) => void;
+  onClose: () => void;
+}) {
+  const [selected, setSelected] = useState(time);
+
+  useEffect(() => {
+    setSelected(time);
+  }, [time, visible]);
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <Pressable style={styles.modalOverlay} onPress={onClose}>
+        <Pressable style={styles.modalSheet} onPress={() => {}}>
+          <View style={styles.modalHandle} />
+          <Text style={styles.modalTitle}>Jam {scheduleLabel}</Text>
+          <Text style={styles.modalSub}>
+            Pilih jam minum obat untuk waktu ini
+          </Text>
+
+          <DateTimePicker
+            value={selected}
+            mode="time"
+            display={Platform.OS === "ios" ? "spinner" : "default"}
+            is24Hour
+            onChange={(_, date) => {
+              if (date) setSelected(date);
+            }}
+          />
+
+          <View style={styles.modalBtnRow}>
+            <TouchableOpacity style={styles.modalCancelBtn} onPress={onClose}>
+              <Text style={styles.modalCancelText}>Batal</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.modalConfirmBtn}
+              onPress={() => onConfirm(selected)}
+            >
+              <Text style={styles.modalConfirmText}>Konfirmasi</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function timeStringToDate(timeStr: string): Date {
+  const [h, m] = timeStr.split(":").map(Number);
+  const d = new Date();
+  d.setHours(h, m, 0, 0);
+  return d;
+}
+
+function dateToTimeString(date: Date): string {
+  const h = String(date.getHours()).padStart(2, "0");
+  const m = String(date.getMinutes()).padStart(2, "0");
+  return `${h}:${m}`;
+}
+
 // ─── Main Screen ─────────────────────────────────────────────────────────────
 
 export default function MedicationAddScreen() {
   const router = useRouter();
 
-  // Ambil patientId dari route params
   const { patientId: routePatientId } = useLocalSearchParams<{
     patientId: string;
   }>();
 
   // Form state
-  const [patientId, setPatientId] = useState<string>(routePatientId ?? "");
+  const [patientId, setPatientId] = useState<string>(
+    String(routePatientId ?? ""),
+  );
   const [name, setName] = useState("");
   const [dose, setDose] = useState("");
-  const [schedules, setSchedules] = useState<string[]>([]);
+
+  // scheduleMap: key -> time string "HH:MM" (hanya untuk yang aktif)
+  const [scheduleMap, setScheduleMap] = useState<Record<string, string>>({});
+
   const [stock, setStock] = useState("");
   const [expiryDate, setExpiryDate] = useState<Date | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [isActive, setIsActive] = useState(true);
+
+  // Time picker modal
+  const [timePickerKey, setTimePickerKey] = useState<string | null>(null);
 
   // Async state
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -95,30 +209,58 @@ export default function MedicationAddScreen() {
     const { data } = await supabase
       .from("patients")
       .select("id, name")
-      .order("name");
-    setPatients((data as Patient[]) ?? []);
+      .order("name")
+      .returns<Patient[]>();
 
-    // Kalau tidak ada patientId dari route, baru auto-select jika hanya 1 pasien
+    setPatients(data ?? []);
     if (!routePatientId && data && data.length === 1) {
       setPatientId(data[0].id);
     }
     setLoadingPatients(false);
   }
 
-  // Nama pasien yang sedang dipilih
   const selectedPatient = patients.find((p) => p.id === patientId);
 
+  // Toggle jadwal aktif/nonaktif
   function toggleSchedule(key: string) {
-    setSchedules((prev) =>
-      prev.includes(key) ? prev.filter((s) => s !== key) : [...prev, key],
-    );
+    setScheduleMap((prev) => {
+      if (prev[key] !== undefined) {
+        // sudah aktif → hapus
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      } else {
+        // aktifkan dengan default time
+        const def =
+          SCHEDULES.find((s) => s.key === key)?.defaultTime ?? "07:00";
+        return { ...prev, [key]: def };
+      }
+    });
   }
+
+  // Buka time picker untuk jadwal tertentu
+  function openTimePicker(key: string) {
+    setTimePickerKey(key);
+  }
+
+  function handleTimeConfirm(date: Date) {
+    if (!timePickerKey) return;
+    const timeStr = dateToTimeString(date);
+    setScheduleMap((prev) => ({ ...prev, [timePickerKey]: timeStr }));
+    setTimePickerKey(null);
+  }
+
+  // Encode semua jadwal aktif ke format "key|HH:MM"
+  const encodedSchedules = Object.entries(scheduleMap).map(([k, t]) =>
+    encodeSchedule(k, t),
+  );
 
   function validate() {
     if (!patientId) return "Pilih pasien terlebih dahulu.";
     if (!name.trim()) return "Nama obat wajib diisi.";
     if (!dose.trim()) return "Dosis obat wajib diisi.";
-    if (schedules.length === 0) return "Pilih minimal satu jadwal minum.";
+    if (encodedSchedules.length === 0)
+      return "Pilih minimal satu jadwal minum.";
     if (!stock.trim() || isNaN(Number(stock)) || Number(stock) < 0)
       return "Stok harus berupa angka yang valid.";
     return null;
@@ -132,15 +274,19 @@ export default function MedicationAddScreen() {
     }
     setSaving(true);
     try {
-      const { error: sbError } = await supabase.from("medications").insert({
+      const payload = {
         patient_id: patientId,
         name: name.trim(),
         dose: dose.trim(),
-        schedules,
+        schedules: encodedSchedules,
         stock: Number(stock),
         expiry_date: expiryDate ? expiryDate.toISOString().split("T")[0] : null,
         is_active: isActive,
-      });
+      };
+
+      const { error: sbError } = await supabase
+        .from("medications")
+        .insert(payload as any);
       if (sbError) throw sbError;
       router.back();
     } catch (e: any) {
@@ -149,6 +295,14 @@ export default function MedicationAddScreen() {
       setSaving(false);
     }
   }
+
+  // Time picker modal data
+  const activeTimePickerSchedule = SCHEDULES.find(
+    (s) => s.key === timePickerKey,
+  );
+  const activeTimePickerDate = timePickerKey
+    ? timeStringToDate(scheduleMap[timePickerKey] ?? "07:00")
+    : new Date();
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -163,7 +317,6 @@ export default function MedicationAddScreen() {
         </TouchableOpacity>
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>Tambah Obat</Text>
-          {/* Nama pasien yang dipilih tampil di bawah judul */}
           {selectedPatient ? (
             <View style={styles.headerPatientBadge}>
               <Ionicons name="person" size={11} color="#2D6A4F" />
@@ -257,42 +410,64 @@ export default function MedicationAddScreen() {
             />
           </Field>
 
-          {/* ── Jadwal ── */}
+          {/* ── Jadwal + Jam ── */}
           <Field label="Jadwal Minum" required>
-            <View style={styles.scheduleGrid}>
+            <View style={styles.scheduleList}>
               {SCHEDULES.map((s) => {
-                const active = schedules.includes(s.key);
+                const active = scheduleMap[s.key] !== undefined;
+                const time = scheduleMap[s.key];
                 return (
-                  <Pressable
-                    key={s.key}
-                    style={[
-                      styles.scheduleCard,
-                      active && styles.scheduleCardActive,
-                    ]}
-                    onPress={() => toggleSchedule(s.key)}
-                  >
-                    <Ionicons
-                      name={s.icon}
-                      size={20}
-                      color={active ? "#fff" : "#6B8F7E"}
-                    />
-                    <Text
+                  <View key={s.key} style={styles.scheduleRow}>
+                    {/* Toggle chip */}
+                    <Pressable
                       style={[
-                        styles.scheduleCardText,
-                        active && styles.scheduleCardTextActive,
+                        styles.scheduleChip,
+                        active && styles.scheduleChipActive,
                       ]}
+                      onPress={() => toggleSchedule(s.key)}
                     >
-                      {s.label}
-                    </Text>
-                    {active && (
                       <Ionicons
-                        name="checkmark-circle"
-                        size={14}
-                        color="#fff"
-                        style={styles.scheduleCheck}
+                        name={s.icon}
+                        size={18}
+                        color={active ? "#fff" : "#6B8F7E"}
                       />
+                      <Text
+                        style={[
+                          styles.scheduleChipText,
+                          active && styles.scheduleChipTextActive,
+                        ]}
+                      >
+                        {s.label}
+                      </Text>
+                      {active && (
+                        <Ionicons
+                          name="checkmark-circle"
+                          size={14}
+                          color="#fff"
+                        />
+                      )}
+                    </Pressable>
+
+                    {/* Jam picker — hanya tampil kalau aktif */}
+                    {active && (
+                      <TouchableOpacity
+                        style={styles.timeBadge}
+                        onPress={() => openTimePicker(s.key)}
+                      >
+                        <Ionicons
+                          name="time-outline"
+                          size={14}
+                          color="#2D6A4F"
+                        />
+                        <Text style={styles.timeBadgeText}>{time}</Text>
+                        <Ionicons
+                          name="chevron-down"
+                          size={12}
+                          color="#2D6A4F"
+                        />
+                      </TouchableOpacity>
                     )}
-                  </Pressable>
+                  </View>
                 );
               })}
             </View>
@@ -424,6 +599,15 @@ export default function MedicationAddScreen() {
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* ── Time Picker Modal ── */}
+      <TimePickerModal
+        visible={timePickerKey !== null}
+        scheduleLabel={activeTimePickerSchedule?.label ?? ""}
+        time={activeTimePickerDate}
+        onConfirm={handleTimeConfirm}
+        onClose={() => setTimePickerKey(null)}
+      />
     </SafeAreaView>
   );
 }
@@ -456,10 +640,7 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     elevation: 2,
   },
-  headerCenter: {
-    alignItems: "center",
-    gap: 3,
-  },
+  headerCenter: { alignItems: "center", gap: 3 },
   headerTitle: { fontSize: 17, fontWeight: "700", color: "#1B2D27" },
   headerPatientBadge: {
     flexDirection: "row",
@@ -470,11 +651,7 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderRadius: 20,
   },
-  headerPatientName: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: "#2D6A4F",
-  },
+  headerPatientName: { fontSize: 11, fontWeight: "600", color: "#2D6A4F" },
 
   // Scroll
   scrollContent: { padding: 16, paddingBottom: 48 },
@@ -530,25 +707,52 @@ const styles = StyleSheet.create({
   patientChipText: { fontSize: 13, fontWeight: "600", color: "#4A7062" },
   patientChipTextActive: { color: "#fff" },
 
-  // Schedule grid
-  scheduleGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  scheduleCard: {
+  // Schedule list
+  scheduleList: { gap: 10 },
+  scheduleRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    width: "47%",
-    paddingHorizontal: 12,
-    paddingVertical: 11,
+    gap: 10,
+  },
+  scheduleChip: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     borderRadius: 12,
     borderWidth: 1.5,
     borderColor: "#C8E6D8",
     backgroundColor: "#fff",
-    position: "relative",
   },
-  scheduleCardActive: { backgroundColor: "#2D6A4F", borderColor: "#2D6A4F" },
-  scheduleCardText: { fontSize: 13, fontWeight: "600", color: "#4A7062" },
-  scheduleCardTextActive: { color: "#fff" },
-  scheduleCheck: { position: "absolute", top: 6, right: 8 },
+  scheduleChipActive: { backgroundColor: "#2D6A4F", borderColor: "#2D6A4F" },
+  scheduleChipText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#4A7062",
+  },
+  scheduleChipTextActive: { color: "#fff" },
+
+  // Time badge
+  timeBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: "#E8F5EE",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1.5,
+    borderColor: "#C8E6D8",
+  },
+  timeBadgeText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#2D6A4F",
+    letterSpacing: 0.5,
+  },
 
   // Date input
   dateInput: { flexDirection: "row", alignItems: "center", gap: 8 },
@@ -591,4 +795,51 @@ const styles = StyleSheet.create({
   },
   saveBtnDisabled: { opacity: 0.65 },
   saveBtnText: { fontSize: 16, fontWeight: "700", color: "#fff" },
+
+  // Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "flex-end",
+  },
+  modalSheet: {
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingBottom: 36,
+    paddingTop: 12,
+  },
+  modalHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#E5E7EB",
+    alignSelf: "center",
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#1B2D27",
+    marginBottom: 4,
+  },
+  modalSub: { fontSize: 13, color: "#6B8F7E", marginBottom: 8 },
+  modalBtnRow: { flexDirection: "row", gap: 10, marginTop: 12 },
+  modalCancelBtn: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: 12,
+    backgroundColor: "#F3F4F6",
+    alignItems: "center",
+  },
+  modalCancelText: { fontSize: 15, fontWeight: "600", color: "#6B7280" },
+  modalConfirmBtn: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: 12,
+    backgroundColor: "#2D6A4F",
+    alignItems: "center",
+  },
+  modalConfirmText: { fontSize: 15, fontWeight: "700", color: "#fff" },
 });
