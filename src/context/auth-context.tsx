@@ -52,15 +52,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     });
 
-    // Listen perubahan auth
+    // Listen perubahan auth. Set loading=true selama profil diambil agar
+    // RootRedirect tidak menavigasi di tengah window "session ada, profil
+    // belum kebaca" (mis. tepat setelah login) — kalau tidak, login bisa salah
+    // dianggap sebagai session tanpa profil dan dilempar balik ke login.
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       if (session?.user?.id) {
-        fetchProfile(session.user.id);
+        setLoading(true);
+        fetchProfile(session.user.id).finally(() => setLoading(false));
       } else {
         setProfile(null);
+        setLoading(false);
       }
     });
 
