@@ -1,4 +1,5 @@
 import { AuthProvider, useAuth } from "@/context/auth-context";
+import { logout } from "@/lib/auth";
 import {
   DarkTheme,
   DefaultTheme,
@@ -23,6 +24,11 @@ function RootRedirect() {
       if (!inAuth) router.replace("/(auth)/login");
     } else if (session && profile) {
       if (!inApp) router.replace("/(app)/dashboard");
+    } else {
+      // Session valid tapi profil tidak ditemukan (mis. registrasi tidak
+      // tuntas atau data dihapus). Sign out agar tidak terjebak di limbo;
+      // listener auth akan mengarahkan kembali ke login.
+      logout().catch(() => {});
     }
   }, [session, profile, loading, segments]);
 

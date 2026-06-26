@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase/client";
+import type { Family } from "@/types/database";
 
 function generateFamilyCode(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -55,6 +56,7 @@ export async function registerCaregiver(
     .eq("family_code", familyCode.trim().toUpperCase())
     .single();
   if (familyError || !family) throw new Error("Kode keluarga tidak ditemukan");
+  const foundFamily = family as Family;
 
   const { data: authData, error: authError } = await supabase.auth.signUp({
     email: email.trim().toLowerCase(),
@@ -74,12 +76,12 @@ export async function registerCaregiver(
     id: authData.user.id,
     email: email.trim().toLowerCase(),
     full_name: fullName.trim(),
-    family_id: family.id,
+    family_id: foundFamily.id,
     role: "caregiver",
   });
   if (profileError) throw new Error("Gagal bergabung: " + profileError.message);
 
-  return { family };
+  return { family: foundFamily };
 }
 
 export async function login(email: string, password: string) {
