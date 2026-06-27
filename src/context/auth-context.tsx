@@ -2,11 +2,11 @@ import { supabase } from "@/lib/supabase/client";
 import { Profile } from "@/types/database";
 import { Session } from "@supabase/supabase-js";
 import {
-  createContext,
-  ReactNode,
-  useContext,
-  useEffect,
-  useState,
+    createContext,
+    ReactNode,
+    useContext,
+    useEffect,
+    useState,
 } from "react";
 
 interface AuthContextType {
@@ -29,12 +29,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const fetchProfile = async (userId: string) => {
-    const { data } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", userId)
-      .single();
-    setProfile(data ?? null);
+    try {
+      console.log("[Temani] Loading profile for user", userId);
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", userId)
+        .maybeSingle();
+
+      if (error) {
+        console.error("[Temani] Failed to load profile:", error.message);
+        setProfile(null);
+        return;
+      }
+
+      setProfile(data ?? null);
+    } catch (error) {
+      console.error("[Temani] Unexpected profile loading error:", error);
+      setProfile(null);
+    }
   };
 
   const refreshProfile = async () => {
@@ -42,15 +55,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    // Ambil session awal
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      if (session?.user?.id) {
-        fetchProfile(session.user.id).finally(() => setLoading(false));
-      } else {
-        setLoading(false);
+    let mounted = true;
+
+    const applySession = async () => {
+      try {
+        console.log("[Temani] Initial auth session check");
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        if (!mounted) return;
+
+        setSession(session);
+        if (session?.user?.id) {
+          await fetchProfile(session.user.id);
+        }
+      } catch (error) {
+        console.error("[Temani] Failed to initialize auth session:", error);
+        if (mounted) {
+          setSession(null);
+          setProfile(null);
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
       }
-    });
+    };
+
+    applySession();
 
     // Listen perubahan auth. Set loading=true selama profil diambil agar
     // RootRedirect tidak menavigasi di tengah window "session ada, profil
@@ -58,18 +91,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // dianggap sebagai session tanpa profil dan dilempar balik ke login.
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (!mounted) return;
+
+      console.log("[Temani] Auth state changed", _event);
       setSession(session);
       if (session?.user?.id) {
         setLoading(true);
-        fetchProfile(session.user.id).finally(() => setLoading(false));
+        await fetchProfile(session.user.id);
+        if (mounted) {
+          setLoading(false);
+        }
       } else {
         setProfile(null);
         setLoading(false);
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   return (

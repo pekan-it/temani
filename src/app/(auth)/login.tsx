@@ -34,7 +34,6 @@ export default function LoginScreen() {
     setLoading(true);
     try {
       await login(email, password);
-      // RootRedirect di _layout.tsx akan otomatis redirect ke dashboard
     } catch (err) {
       setError(err instanceof Error ? err.message : "Gagal masuk");
     } finally {
@@ -43,11 +42,11 @@ export default function LoginScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
+    <KeyboardAvoidingView
+      style={styles.root}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
+      <SafeAreaView style={styles.safe}>
         <ScrollView
           contentContainerStyle={styles.container}
           keyboardShouldPersistTaps="handled"
@@ -120,14 +119,19 @@ export default function LoginScreen() {
             </Text>
           </TouchableOpacity>
         </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+      </SafeAreaView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: AuthColors.background },
-  flex: { flex: 1 },
+  root: {
+    flex: 1,
+    backgroundColor: AuthColors.background,
+  },
+  safe: {
+    flex: 1,
+  },
   container: {
     flexGrow: 1,
     justifyContent: "center",

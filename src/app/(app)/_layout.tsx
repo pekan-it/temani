@@ -8,7 +8,7 @@ const MUTED = "#A0B5AC";
 
 export default function AppLayout() {
   useEffect(() => {
-    registerPushToken();
+    void registerPushToken().catch(() => {});
   }, []);
 
   return (

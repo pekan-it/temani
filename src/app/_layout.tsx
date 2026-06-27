@@ -9,6 +9,8 @@ import { Stack, useRouter, useSegments } from "expo-router";
 import { useEffect } from "react";
 import { useColorScheme } from "react-native";
 
+console.log("[Temani] Root layout loaded");
+
 function RootRedirect() {
   const { session, profile, loading } = useAuth();
   const segments = useSegments();
@@ -17,26 +19,44 @@ function RootRedirect() {
   useEffect(() => {
     if (loading) return;
 
-    const inAuth = segments[0] === "(auth)";
-    const inApp = segments[0] === "(app)";
+    try {
+      console.log("[Temani] Redirect check", {
+        loading,
+        hasSession: !!session,
+        hasProfile: !!profile,
+        segments,
+      });
 
-    if (!session) {
-      if (!inAuth) router.replace("/(auth)/login");
-    } else if (session && profile) {
-      if (!inApp) router.replace("/(app)/dashboard");
-    } else {
-      // Session valid tapi profil tidak ditemukan (mis. registrasi tidak
-      // tuntas atau data dihapus). Sign out agar tidak terjebak di limbo;
-      // listener auth akan mengarahkan kembali ke login.
-      logout().catch(() => {});
+      const inAuth = segments[0] === "(auth)";
+      const inApp = segments[0] === "(app)";
+
+      if (!session) {
+        if (!inAuth) {
+          console.log("[Temani] Redirecting to login");
+          router.replace("/(auth)/login");
+        }
+      } else if (session && profile) {
+        if (!inApp) {
+          console.log("[Temani] Redirecting to dashboard");
+          router.replace("/(app)/dashboard");
+        }
+      } else {
+        console.log("[Temani] Session exists but profile missing, logging out");
+        logout().catch((error) => {
+          console.error("[Temani] Logout failed:", error);
+        });
+      }
+    } catch (error) {
+      console.error("[Temani] Root redirect failed:", error);
     }
-  }, [session, profile, loading, segments]);
+  }, [session, profile, loading, segments, router]);
 
   return null;
 }
 
 function RootLayoutInner() {
   const colorScheme = useColorScheme();
+
   return (
     <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
       <RootRedirect />

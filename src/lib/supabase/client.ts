@@ -3,8 +3,19 @@ import { createClient } from "@supabase/supabase-js";
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
+const supabaseUrl =
+  process.env.EXPO_PUBLIC_SUPABASE_URL ?? "https://placeholder.supabase.co";
+const supabaseAnonKey =
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "placeholder-anon-key";
+
+if (
+  !process.env.EXPO_PUBLIC_SUPABASE_URL ||
+  !process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY
+) {
+  console.warn(
+    "Supabase environment variables are missing. Auth features will be unavailable until they are configured.",
+  );
+}
 
 const ExpoSecureStoreAdapter = {
   getItem: (key: string) => {

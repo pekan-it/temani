@@ -47,7 +47,6 @@ export default function RegisterOwnerScreen() {
         familyName,
       );
 
-      // Sign out setelah daftar agar user masuk lewat halaman login.
       await logout();
 
       Alert.alert(
@@ -63,11 +62,11 @@ export default function RegisterOwnerScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
+    <KeyboardAvoidingView
+      style={styles.root}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
+      <SafeAreaView style={styles.safe}>
         <ScrollView
           contentContainerStyle={styles.container}
           keyboardShouldPersistTaps="handled"
@@ -186,14 +185,14 @@ export default function RegisterOwnerScreen() {
             </Text>
           </TouchableOpacity>
         </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+      </SafeAreaView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: AuthColors.background },
-  flex: { flex: 1 },
+  root: { flex: 1, backgroundColor: AuthColors.background },
+  safe: { flex: 1 },
   container: {
     flexGrow: 1,
     padding: 24,
@@ -247,11 +246,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     marginBottom: 14,
   },
-  roleBadgeText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: AuthColors.primary,
-  },
+  roleBadgeText: { fontSize: 12, fontWeight: "700", color: AuthColors.primary },
   cardTitle: { fontSize: 22, fontWeight: "800", color: AuthColors.text },
   cardSubtitle: {
     fontSize: 14,
