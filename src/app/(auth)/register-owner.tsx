@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AuthColors } from "@/constants/auth-theme";
 import { logout, registerOwner } from "@/lib/auth";
+import { Image } from "expo-image";
 
 export default function RegisterOwnerScreen() {
   const router = useRouter();
@@ -50,7 +51,7 @@ export default function RegisterOwnerScreen() {
       await logout();
 
       Alert.alert(
-        "🎉 Akun Berhasil Dibuat!",
+        "Akun Berhasil Dibuat!",
         `Kode keluarga kamu:\n\n${familyCode}\n\nSimpan & bagikan kode ini ke anggota keluarga lain. Silakan masuk dengan akunmu.`,
         [{ text: "Masuk", onPress: () => router.replace("/(auth)/login") }],
       );
@@ -81,23 +82,16 @@ export default function RegisterOwnerScreen() {
           </TouchableOpacity>
 
           <View style={styles.header}>
-            <View style={styles.logoBadge}>
-              <Ionicons name="heart" size={30} color={AuthColors.white} />
-            </View>
+            <Image
+              source={require("@/assets/images/no-bg-temani.png")}
+              style={styles.logoImage}
+              resizeMode="contain"
+            />
             <Text style={styles.logo}>Temani</Text>
             <Text style={styles.tagline}>Merawat bersama, lebih mudah</Text>
           </View>
 
           <View style={styles.card}>
-            <View style={styles.roleBadge}>
-              <Ionicons
-                name="shield-checkmark"
-                size={16}
-                color={AuthColors.primary}
-              />
-              <Text style={styles.roleBadgeText}>Pengelola Utama</Text>
-            </View>
-
             <Text style={styles.cardTitle}>Daftar Akun</Text>
             <Text style={styles.cardSubtitle}>
               Daftarkan diri kamu sebagai pengelola utama keluarga
@@ -109,7 +103,7 @@ export default function RegisterOwnerScreen() {
                 icon="person-outline"
                 value={name}
                 onChangeText={setName}
-                placeholder="Nama kamu"
+                placeholder="Masukkan Nama Lengkap"
                 editable={!loading}
               />
 
@@ -118,7 +112,7 @@ export default function RegisterOwnerScreen() {
                 icon="people-outline"
                 value={familyName}
                 onChangeText={setFamilyName}
-                placeholder="cth: Keluarga Arsam"
+                placeholder="Masukkan Nama Keluarga"
                 editable={!loading}
               />
 
@@ -127,7 +121,7 @@ export default function RegisterOwnerScreen() {
                 icon="mail-outline"
                 value={email}
                 onChangeText={setEmail}
-                placeholder="nama@email.com"
+                placeholder="Masukkan Email"
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoComplete="email"
@@ -139,7 +133,7 @@ export default function RegisterOwnerScreen() {
                 icon="lock-closed-outline"
                 value={password}
                 onChangeText={setPassword}
-                placeholder="Min. 8 karakter"
+                placeholder="Masukkan Kata Sandi"
                 isPassword
                 editable={!loading}
               />
@@ -209,6 +203,10 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   header: { alignItems: "center", marginBottom: 24 },
+  logoImage: {
+    width: 140,
+    height: 140,
+  },
   logoBadge: {
     width: 64,
     height: 64,
