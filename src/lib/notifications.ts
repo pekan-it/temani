@@ -80,6 +80,4 @@ export async function registerPushToken() {
     console.error("[Temani] Failed to register push token:", error);
     return null;
   }
-
-  return null;
 }

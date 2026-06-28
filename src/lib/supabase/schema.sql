@@ -42,12 +42,18 @@ create table if not exists public.families (
 );
 
 create table if not exists public.profiles (
-  id         uuid primary key references auth.users (id) on delete cascade,
-  email      text not null,
-  full_name  text not null,
-  family_id  uuid references public.families (id) on delete set null,
-  role       user_role not null default 'caregiver',
-  created_at timestamptz not null default now()
+  id                uuid primary key references auth.users (id) on delete cascade,
+  email             text not null,
+  full_name         text not null,
+  family_id         uuid references public.families (id) on delete set null,
+  role              user_role not null default 'caregiver',
+  -- Expo push token for this device. Refreshed on every app launch.
+  push_token        text,
+  -- Per-user reminder switches, mirrored from Settings so the reminder Edge
+  -- Function can filter recipients without reading auth user metadata.
+  notify_medications boolean not null default true,
+  notify_checkups    boolean not null default true,
+  created_at        timestamptz not null default now()
 );
 
 create table if not exists public.patients (
@@ -65,7 +71,9 @@ create table if not exists public.medications (
   patient_id  uuid not null references public.patients (id) on delete cascade,
   name        text not null,
   dose        text not null,
-  schedules   med_schedule[] not null default '{}',
+  -- Each entry encodes a slot and its clock time, e.g. 'pagi|07:00'. Stored as
+  -- text[] (not the med_schedule enum) so an exact time can travel with the slot.
+  schedules   text[] not null default '{}',
   stock       int not null default 0 check (stock >= 0),
   expiry_date date,
   is_active   boolean not null default true,
@@ -101,6 +109,23 @@ create table if not exists public.appointments (
   created_at       timestamptz not null default now()
 );
 
+-- Dedupe ledger for the reminder Edge Function: one row per reminder actually
+-- sent, so a per-minute cron never pushes the same reminder twice.
+--   ref_type: 'medication' | 'appointment'
+--   kind:     'dose' (medication) | 'h1' | 'hari_h' (appointment)
+--   slot_key: the medication slot ('pagi'…) or '' for appointments
+create table if not exists public.notification_logs (
+  id        uuid primary key default gen_random_uuid(),
+  family_id uuid not null references public.families (id) on delete cascade,
+  ref_id    uuid not null,
+  ref_type  text not null,
+  kind      text not null,
+  slot_key  text not null default '',
+  slot_date date not null,
+  sent_at   timestamptz not null default now(),
+  unique (ref_id, ref_type, kind, slot_key, slot_date)
+);
+
 -- ── Indexes (foreign keys we filter/join on frequently) ──────────────────────
 create index if not exists idx_profiles_family       on public.profiles (family_id);
 create index if not exists idx_patients_family        on public.patients (family_id);
@@ -109,6 +134,15 @@ create index if not exists idx_med_logs_medication    on public.medication_logs 
 create index if not exists idx_med_logs_patient_date  on public.medication_logs (patient_id, date);
 create index if not exists idx_appointments_patient   on public.appointments (patient_id);
 create index if not exists idx_appointments_family    on public.appointments (family_id);
+create index if not exists idx_notif_logs_family      on public.notification_logs (family_id);
+
+-- ── Migrations for existing databases ────────────────────────────────────────
+-- `create table if not exists` never alters an existing table, so apply column
+-- and type changes explicitly. All guarded to stay safe on re-run.
+alter table public.profiles add column if not exists push_token         text;
+alter table public.profiles add column if not exists notify_medications boolean not null default true;
+alter table public.profiles add column if not exists notify_checkups    boolean not null default true;
+alter table public.medications alter column schedules type text[] using schedules::text[];
 
 -- =============================================================================
 -- Functions
@@ -189,6 +223,7 @@ alter table public.patients        enable row level security;
 alter table public.medications     enable row level security;
 alter table public.medication_logs enable row level security;
 alter table public.appointments    enable row level security;
+alter table public.notification_logs enable row level security;
 
 -- ── families ─────────────────────────────────────────────────────────────────
 -- Readable by anyone: a caregiver must look the family up by code *before* they
@@ -249,6 +284,11 @@ drop policy if exists "appointments_all_same_family" on public.appointments;
 create policy "appointments_all_same_family" on public.appointments
   for all using (family_id = public.my_family_id())
   with check (family_id = public.my_family_id());
+
+-- ── notification_logs (read-only for the family; writes happen via service role)
+drop policy if exists "notif_logs_select_same_family" on public.notification_logs;
+create policy "notif_logs_select_same_family" on public.notification_logs
+  for select using (family_id = public.my_family_id());
 
 -- =============================================================================
 -- Grants

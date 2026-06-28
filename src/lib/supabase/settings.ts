@@ -71,4 +71,16 @@ export async function updateNotificationPreferences(
   if (error) {
     throw new Error(error.message);
   }
+
+  const { error: profileError } = await supabase
+    .from("profiles")
+    .update({
+      notify_medications: preferences.medicationReminders,
+      notify_checkups: preferences.checkupReminders,
+    })
+    .eq("id", user.id);
+
+  if (profileError) {
+    throw new Error(profileError.message);
+  }
 }
