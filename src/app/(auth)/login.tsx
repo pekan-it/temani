@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AuthColors } from "@/constants/auth-theme";
 import { login } from "@/lib/auth";
+import { Image } from "expo-image";
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -53,8 +54,12 @@ export default function LoginScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.header}>
-            <View style={styles.logoBadge}>
-              <Ionicons name="heart" size={30} color={AuthColors.white} />
+            <View>
+              <Image
+                source={require("@/assets/images/no-bg-temani.png")}
+                style={styles.logoImage}
+                resizeMode="contain"
+              />
             </View>
             <Text style={styles.logo}>Temani</Text>
             <Text style={styles.tagline}>Merawat bersama, lebih mudah</Text>
@@ -72,7 +77,7 @@ export default function LoginScreen() {
                 icon="mail-outline"
                 value={email}
                 onChangeText={setEmail}
-                placeholder="nama@email.com"
+                placeholder="Masukkan Email"
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoComplete="email"
@@ -138,7 +143,11 @@ const styles = StyleSheet.create({
     padding: 24,
     paddingVertical: 40,
   },
-  header: { alignItems: "center", marginBottom: 28 },
+  header: { alignItems: "center", marginBottom: 24 },
+  logoImage: {
+    width: 140,
+    height: 140,
+  },
   logoBadge: {
     width: 64,
     height: 64,

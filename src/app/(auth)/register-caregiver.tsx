@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AuthColors } from "@/constants/auth-theme";
 import { logout, registerCaregiver } from "@/lib/auth";
+import { Image } from "expo-image";
 
 export default function RegisterCaregiverScreen() {
   const router = useRouter();
@@ -55,7 +56,7 @@ export default function RegisterCaregiverScreen() {
       await logout();
 
       Alert.alert(
-        "✅ Berhasil Bergabung!",
+        "Berhasil Bergabung!",
         `Kamu sekarang bagian dari ${family.name}. Silakan masuk dengan akunmu.`,
         [{ text: "Masuk", onPress: () => router.replace("/(auth)/login") }],
       );
@@ -86,19 +87,16 @@ export default function RegisterCaregiverScreen() {
           </TouchableOpacity>
 
           <View style={styles.header}>
-            <View style={styles.logoBadge}>
-              <Ionicons name="heart" size={30} color={AuthColors.white} />
-            </View>
+            <Image
+              source={require("@/assets/images/no-bg-temani.png")}
+              style={styles.logoImage}
+              resizeMode="contain"
+            />
             <Text style={styles.logo}>Temani</Text>
             <Text style={styles.tagline}>Merawat bersama, lebih mudah</Text>
           </View>
 
           <View style={styles.card}>
-            <View style={styles.roleBadge}>
-              <Ionicons name="people" size={16} color={AuthColors.primary} />
-              <Text style={styles.roleBadgeText}>Caregiver</Text>
-            </View>
-
             <Text style={styles.cardTitle}>Gabung Keluarga</Text>
             <Text style={styles.cardSubtitle}>
               Masukkan kode yang diberikan oleh pengelola utama
@@ -121,7 +119,7 @@ export default function RegisterCaregiverScreen() {
                 icon="person-outline"
                 value={name}
                 onChangeText={setName}
-                placeholder="Nama kamu"
+                placeholder="Masukkan Nama Lengkap"
                 editable={!loading}
               />
 
@@ -130,7 +128,7 @@ export default function RegisterCaregiverScreen() {
                 icon="mail-outline"
                 value={email}
                 onChangeText={setEmail}
-                placeholder="nama@email.com"
+                placeholder="Masukkan Email"
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoComplete="email"
@@ -142,7 +140,7 @@ export default function RegisterCaregiverScreen() {
                 icon="lock-closed-outline"
                 value={password}
                 onChangeText={setPassword}
-                placeholder="Min. 8 karakter"
+                placeholder="Masukkan Kata Sandi"
                 isPassword
                 editable={!loading}
               />
@@ -201,6 +199,10 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   header: { alignItems: "center", marginBottom: 24 },
+  logoImage: {
+    width: 140,
+    height: 140,
+  },
   logoBadge: {
     width: 64,
     height: 64,
