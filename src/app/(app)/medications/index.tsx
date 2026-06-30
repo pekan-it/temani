@@ -1,7 +1,7 @@
 import { supabase } from "@/lib/supabase/client";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -238,9 +238,13 @@ export default function MedicationListScreen() {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [patientsLoading, setPatientsLoading] = useState(false);
 
-  useEffect(() => {
-    fetchMedications();
-  }, []);
+  // Refetch tiap layar kembali fokus (mis. setelah menambah obat lalu back),
+  // supaya obat baru langsung muncul tanpa perlu reload aplikasi.
+  useFocusEffect(
+    useCallback(() => {
+      fetchMedications();
+    }, []),
+  );
 
   async function fetchMedications() {
     setLoading(true);
