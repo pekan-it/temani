@@ -1,3 +1,4 @@
+import { syncAllReminders } from "@/lib/notifications";
 import { supabase } from "@/lib/supabase/client";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -219,6 +220,7 @@ export function CheckupForm() {
       });
 
       if (error) throw error;
+      await syncAllReminders().catch(() => {});
       router.back();
     } catch (err: any) {
       setErrors({ submit: err.message ?? "Gagal menyimpan jadwal" });

@@ -1,3 +1,4 @@
+import { syncAllReminders } from "@/lib/notifications";
 import { supabase } from "@/lib/supabase/client";
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -288,6 +289,7 @@ export default function MedicationAddScreen() {
         .from("medications")
         .insert(payload as any);
       if (sbError) throw sbError;
+      await syncAllReminders().catch(() => {});
       router.back();
     } catch (e: any) {
       Alert.alert("Gagal Menyimpan", e?.message ?? "Terjadi kesalahan.");

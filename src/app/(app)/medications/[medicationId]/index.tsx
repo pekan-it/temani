@@ -1,3 +1,4 @@
+import { syncAllReminders } from "@/lib/notifications";
 import { supabase } from "@/lib/supabase/client";
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -235,6 +236,7 @@ export default function MedicationDetailScreen() {
 
       if (sbError) throw sbError;
 
+      await syncAllReminders().catch(() => {});
       await fetchMedication();
       setIsEditing(false);
     } catch (e: any) {
@@ -261,6 +263,7 @@ export default function MedicationDetailScreen() {
                 .delete()
                 .eq("id", id);
               if (sbError) throw sbError;
+              await syncAllReminders().catch(() => {});
               router.back();
             } catch (e: any) {
               Alert.alert(

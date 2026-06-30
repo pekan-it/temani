@@ -1,5 +1,6 @@
 import { useAuth } from "@/context/auth-context";
 import { logout } from "@/lib/auth";
+import { syncAllReminders } from "@/lib/notifications";
 import {
   NotificationPreferences,
   updateAvatarUrl,
@@ -112,6 +113,8 @@ export default function SettingsScreen() {
         familyInvites,
       });
       await refreshProfile();
+      // Terapkan toggle pengingat ke jadwal notifikasi lokal.
+      await syncAllReminders().catch(() => {});
       setStatusMessage("Perubahan berhasil disimpan.");
     } catch (error) {
       setErrorMessage(
