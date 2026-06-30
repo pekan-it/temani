@@ -1,4 +1,4 @@
-import { registerPushToken } from "@/lib/notifications";
+import { registerPushToken, syncAllReminders } from "@/lib/notifications";
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import { useEffect } from "react";
@@ -8,6 +8,8 @@ const MUTED = "#A0B5AC";
 
 export default function AppLayout() {
   useEffect(() => {
+    // Re-sync semua pengingat lokal dari data terbaru tiap app dibuka.
+    void syncAllReminders().catch(() => {});
     void registerPushToken().catch(() => {});
   }, []);
 
